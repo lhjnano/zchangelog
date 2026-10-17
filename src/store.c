@@ -26,6 +26,7 @@
 #include "zchangelog.h"
 
 static sqlite3	*db;
+static sqlite3_stmt	*zcl_add_stmt;
 
 int
 store_open(const char *dbfile)
@@ -85,6 +86,10 @@ store_open(const char *dbfile)
 void
 store_close(void)
 {
+	if (zcl_add_stmt != NULL) {
+		sqlite3_finalize(zcl_add_stmt);
+		zcl_add_stmt = NULL;
+	}
 	if (db != NULL)
 		sqlite3_close(db);
 	db = NULL;
@@ -96,16 +101,22 @@ store_add(long long ts, int op, const char *path, const char *to)
 	sqlite3_stmt *stmt;
 	int rc;
 
-	if (sqlite3_prepare_v2(db,
-	    "INSERT INTO records (ts, op, path, path_to) VALUES (?, ?, ?, ?)",
-	    -1, &stmt, NULL) != SQLITE_OK)
-		return (-1);
-	(void) sqlite3_bind_int64(stmt, 1, ts);
-	(void) sqlite3_bind_int(stmt, 2, op);
-	(void) sqlite3_bind_text(stmt, 3, path, -1, SQLITE_STATIC);
-	(void) sqlite3_bind_text(stmt, 4, to ? to : "", -1, SQLITE_STATIC);
-	rc = sqlite3_step(stmt);
-	(void) sqlite3_finalize(stmt);
+	if (zcl_add_stmt == NULL) {
+		if (sqlite3_prepare_v2(db,
+		    "INSERT INTO records (ts, op, path, path_to) "
+		    "VALUES (?, ?, ?, ?)",
+		    -1, &stmt, NULL) != SQLITE_OK)
+			return (-1);
+		zcl_add_stmt = stmt;
+	}
+	(void) sqlite3_reset(zcl_add_stmt);
+	(void) sqlite3_clear_bindings(zcl_add_stmt);
+	(void) sqlite3_bind_int64(zcl_add_stmt, 1, ts);
+	(void) sqlite3_bind_int(zcl_add_stmt, 2, op);
+	(void) sqlite3_bind_text(zcl_add_stmt, 3, path, -1, SQLITE_STATIC);
+	(void) sqlite3_bind_text(zcl_add_stmt, 4, to ? to : "", -1,
+	    SQLITE_STATIC);
+	rc = sqlite3_step(zcl_add_stmt);
 	return (rc == SQLITE_DONE ? 0 : -1);
 }
 

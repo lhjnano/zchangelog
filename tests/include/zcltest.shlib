@@ -86,6 +86,26 @@ mount_test_fs() {
 	esac
 }
 
+# Mount a fresh filesystem instance over the same mountpoint; used
+# by tests that exercise unmount and remount behavior.
+remount_test_fs() {
+	case $FS in
+	tmpfs)
+		sudo -n mount -t tmpfs tmpfs $CLMNT
+		;;
+	ext4)
+		sudo -n mount -o loop $CLDIR/ext4.img $CLMNT
+		;;
+	xfs)
+		sudo -n mount -o loop $CLDIR/xfs.img $CLMNT
+		;;
+	zfs)
+		sudo -n zfs mount zcltest/data
+		;;
+	esac
+	sudo -n chmod 777 $CLMNT
+}
+
 unmount_test_fs() {
 	case $FS in
 	tmpfs)

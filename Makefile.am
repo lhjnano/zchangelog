@@ -32,5 +32,6 @@ TESTS = \
 	tests/functional/changelog/filters.ksh \
 	tests/functional/changelog/owner.ksh \
 	tests/functional/changelog/reconcile.ksh \
-	tests/functional/changelog/stress.ksh
+	tests/functional/changelog/stress.ksh \
+	tests/functional/changelog/unmount.ksh
 EXTRA_DIST = tests scripts

@@ -27,6 +27,7 @@
 #include <time.h>
 #include <sys/fanotify.h>
 #include <sys/stat.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 
@@ -47,13 +48,35 @@ struct zcl_fh {
 	unsigned char	f_handle[];
 };
 
-static int	zcl_mountfd = -1;
+static int	zcl_fanfd = -1;
+static unsigned long long	zcl_markmask;
 static char	zcl_mountpath[4096];
 
 /*
- * Resolve a file handle to a path under the watched mount.  The last
- * resolution is cached because events cluster in the same directory.
+ * (Re)apply the mark on the current mount.  Marks die with the
+ * mount, so this runs again whenever the mount identity changes.
  */
+static void
+refresh_mark(void)
+{
+	if (fanotify_mark(zcl_fanfd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+	    zcl_markmask, AT_FDCWD, zcl_mountpath) == 0)
+		return;
+	(void) fanotify_mark(zcl_fanfd, FAN_MARK_ADD | FAN_MARK_FILESYSTEM,
+	    zcl_markmask, AT_FDCWD, zcl_mountpath);
+}
+
+/*
+ * Open the mount root for handle resolution.  The fd lives only for
+ * the duration of one resolve: a held mount fd would block unmount
+ * and failover.
+ */
+static int
+mount_fd(void)
+{
+	return (open(zcl_mountpath, O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+}
+
 static int
 path_from_handle(const struct zcl_fh *fh, char *buf, size_t buflen)
 {
@@ -62,7 +85,7 @@ path_from_handle(const struct zcl_fh *fh, char *buf, size_t buflen)
 	static char last_path[4096];
 	unsigned char fbuf[512];
 	size_t n = fh->handle_bytes;
-	int ffd;
+	int mfd, ffd;
 	char link[64];
 
 	if (n == 0 || n > sizeof (fbuf))
@@ -72,24 +95,31 @@ path_from_handle(const struct zcl_fh *fh, char *buf, size_t buflen)
 		return (0);
 	}
 
+	mfd = mount_fd();
+	if (mfd < 0)
+		return (-1);
 	unsigned char gbuf[512 + sizeof (struct zcl_fh)];
 	struct zcl_fh *g = (struct zcl_fh *)gbuf;
 
 	memcpy(gbuf, fh, sizeof (*fh) + n);
-	ffd = (int)syscall(SYS_open_by_handle_at, zcl_mountfd, g,
+	ffd = (int)syscall(SYS_open_by_handle_at, mfd, g,
 	    O_PATH | O_DIRECTORY);
 	if (ffd < 0)
-		ffd = (int)syscall(SYS_open_by_handle_at, zcl_mountfd, g,
+		ffd = (int)syscall(SYS_open_by_handle_at, mfd, g,
 		    O_PATH);
-	if (ffd < 0)
+	if (ffd < 0) {
+		(void) close(mfd);
 		return (-1);
+	}
 	(void) snprintf(link, sizeof (link), "/proc/self/fd/%d", ffd);
 	if (readlink(link, buf, buflen - 1) < 0) {
 		(void) close(ffd);
+		(void) close(mfd);
 		return (-1);
 	}
 	buf[buflen - 1] = '\0';
 	(void) close(ffd);
+	(void) close(mfd);
 
 	memcpy(last_bytes, fh->f_handle, n);
 	last_len = n;
@@ -218,43 +248,52 @@ watch_run(const char *mountpath)
 	char buf[65536];
 	char full[4096], oldfull[4096];
 	long long ts;
-	int fd, len, op;
+	int fd, len, op, rint;
 
 	(void) zcl_strlcpy(zcl_mountpath, mountpath, sizeof (zcl_mountpath));
-	zcl_mountfd = open(mountpath, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-	if (zcl_mountfd < 0) {
-		(void) fprintf(stderr, "zchangelog: open %s: %s\n", mountpath,
-		    strerror(errno));
-		return (1);
-	}
-
-	fd = fanotify_init(FAN_CLASS_NOTIF | FAN_REPORT_DFID_NAME,
+	zcl_fanfd = fanotify_init(FAN_CLASS_NOTIF | FAN_REPORT_DFID_NAME,
 	    O_RDONLY | O_CLOEXEC | O_LARGEFILE);
-	if (fd < 0) {
+	if (zcl_fanfd < 0) {
 		(void) fprintf(stderr, "zchangelog: fanotify_init: %s\n",
 		    strerror(errno));
 		return (1);
 	}
-
-	if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-	    FAN_MODIFY | FAN_ATTRIB | FAN_CREATE | FAN_DELETE |
-	    FAN_MOVED_FROM | FAN_MOVED_TO, AT_FDCWD, mountpath) < 0) {
-		(void) fprintf(stderr, "zchangelog: mount mark failed (%s), "
-		    "falling back to filesystem mark\n", strerror(errno));
-		if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_FILESYSTEM,
-		    FAN_MODIFY | FAN_ATTRIB | FAN_CREATE | FAN_DELETE |
-		    FAN_MOVED_FROM | FAN_MOVED_TO, AT_FDCWD, mountpath) < 0) {
-			(void) fprintf(stderr, "zchangelog: fanotify_mark: "
-			    "%s\n", strerror(errno));
-			return (1);
-		}
-	}
+	zcl_markmask = FAN_MODIFY | FAN_ATTRIB | FAN_CREATE | FAN_DELETE |
+	    FAN_MOVED_FROM | FAN_MOVED_TO;
+	refresh_mark();
 
 	(void) printf("watching %s\n", mountpath);
 	(void) fflush(stdout);
 
 	for (;;) {
-		len = read(fd, buf, sizeof (buf));
+		struct pollfd pfd;
+		int pret;
+
+		/*
+		 * poll with a timeout so a remounted dataset gets its
+		 * marks refreshed without a restart; read only when
+		 * the queue actually has events, otherwise the next
+		 * refresh would never run.
+		 */
+		pfd.fd = zcl_fanfd;
+		pfd.events = POLLIN;
+		rint = (int)zcl_tunable("refresh_interval_ms");
+		if (rint <= 0)
+			rint = 5000;
+		pret = poll(&pfd, 1, rint);
+		if (pret < 0) {
+			if (errno == EINTR)
+				continue;
+			(void) fprintf(stderr, "zchangelog: poll: %s\n",
+			    strerror(errno));
+			return (1);
+		}
+		if (pret == 0) {
+			refresh_mark();
+			continue;
+		}
+
+		len = read(zcl_fanfd, buf, sizeof (buf));
 		if (len < 0) {
 			if (errno == EINTR)
 				continue;
@@ -264,6 +303,7 @@ watch_run(const char *mountpath)
 		}
 
 		meta = (struct fanotify_event_metadata *)buf;
+		(void) store_exec("BEGIN IMMEDIATE");
 		while (FAN_EVENT_OK(meta, len)) {
 			if (meta->mask & FAN_Q_OVERFLOW)
 				(void) fprintf(stderr, "zchangelog: queue "
@@ -271,10 +311,6 @@ watch_run(const char *mountpath)
 
 			event_paths(meta, full, sizeof (full), oldfull,
 			    sizeof (oldfull));
-
-			if (meta->mask & FAN_Q_OVERFLOW)
-				(void) fprintf(stderr, "zchangelog: queue "
-				    "overflow, run reconcile\n");
 
 			if (getenv("ZCL_DEBUG") != NULL) {
 				size_t o2 = sizeof (*meta);
@@ -305,12 +341,6 @@ watch_run(const char *mountpath)
 			if (full[0] != '\0' && strncmp(full, zcl_mountpath,
 			    strlen(zcl_mountpath)) != 0)
 				goto next;
-			if (getenv("ZCL_DEBUG") != NULL)
-				(void) fprintf(stderr, "DBG owner filter "
-				    "uid=%lld gid=%lld\n",
-				    zcl_filter_owner_uid(),
-				    zcl_filter_owner_gid());
-
 			if (zcl_filter_owner_uid() >= 0 ||
 			    zcl_filter_owner_gid() >= 0) {
 				const char *p = oldfull[0] ? oldfull : full;
@@ -373,5 +403,12 @@ watch_run(const char *mountpath)
 next:
 			meta = FAN_EVENT_NEXT(meta, len);
 		}
+		/*
+		 * One transaction per read batch: autocommit commits per
+		 * event, which dominates the collector cost at high event
+		 * rates.
+		 */
+		if (store_exec("COMMIT") != 0)
+			(void) store_exec("ROLLBACK");
 	}
 }

@@ -33,6 +33,7 @@ static struct zcl_tunable zcl_tunables[] = {
 	{ "busy_timeout_ms",	5000 },	/* sqlite lock wait */
 	{ "read_batch",		1024 },	/* records fetched per read */
 	{ "follow_interval_ms",	500 },	/* follow mode poll interval */
+	{ "refresh_interval_ms", 5000 },	/* remount mark refresh check */
 	{ "retention_records",	0 },	/* 0 = keep until acknowledged */
 };
 
