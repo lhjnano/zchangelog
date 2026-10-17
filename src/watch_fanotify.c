@@ -316,6 +316,13 @@ watch_run(const char *mountpath)
 				const char *p = oldfull[0] ? oldfull : full;
 				struct stat st;
 
+				if (getenv("ZCL_DEBUG") != NULL &&
+				    stat(p, &st) == 0)
+					(void) fprintf(stderr,
+					    "DBG attrib stat %s uid=%d "
+					    "gid=%d\n", p, (int)st.st_uid,
+					    (int)st.st_gid);
+
 				/*
 				 * Cannot attribute a vanished object;
 				 * drop the event rather than misfile

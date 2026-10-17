@@ -110,8 +110,10 @@ ids are all optional and combine:
 Filters are evaluated at collection time (before the journal
 write), so filtered out events cost no journal space. Owner and
 group are attributed when the event arrives: a record keeps the
-owner the file had at creation, and a later chown arrives as its
-own attrib event. When a pool hosts many datasets, prefer include
+owner the file had at creation. Note that a chown arrives as its
+own attrib event, and attrib events race with the change they
+describe, so owner filtering is best effort rather than a strict
+guarantee. When a pool hosts many datasets, prefer include
 prefixes over running one collector per dataset.
 
 ### Reconcile
@@ -143,6 +145,10 @@ share one journal at independent positions.
   not possible; run the collector on the storage node.
 - A rollback, receive or destroy shows up as bulk changes; run
   reconcile afterwards and expect consumers to rescan.
+- The collector holds the dataset mount open: an unmount or export
+  fails with EBUSY until the collector stops. If the mount goes away
+  otherwise, marks go stale and no events are delivered until the
+  collector is restarted.
 
 ## Journal maintenance
 

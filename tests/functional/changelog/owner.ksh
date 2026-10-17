@@ -16,7 +16,8 @@
 #
 # Owner filtering: events are attributed at the moment they arrive,
 # so a record keeps the owner the file had at creation, and a later
-# chown arrives as an attrib record that the filter rejects.
+# the other file is created by a different user, so its events
+# must not pass the -u 0 filter.
 #
 
 . tests/include/zcltest.shlib
@@ -30,8 +31,7 @@ sleep 1
 
 sudo -n touch $CLMNT/rootfile
 sleep 1
-sudo -n touch $CLMNT/otherfile
-sudo -n chown nobody $CLMNT/otherfile
+sudo -n -u nobody touch $CLMNT/otherfile
 sleep 1
 
 sudo -n pkill -x zchangelog
