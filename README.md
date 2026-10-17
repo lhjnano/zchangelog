@@ -17,6 +17,9 @@ every consumer passed them.
 - fanotify collection in FID reporting mode; works on ZFS 2.2+ and
   any filesystem fanotify supports
 - SQLite journal with per-consumer cursors, acknowledge and trim
+- Collector survives unmounts: it does not pin the dataset, and
+  refreshes its mark automatically after a remount, which is what
+  makes cluster failovers possible without stopping anything first
 - Reconciliation: a full tree walk that catches anything the live
   feed missed
 - JSON output and follow mode for pipeline integration
@@ -145,10 +148,14 @@ share one journal at independent positions.
   not possible; run the collector on the storage node.
 - A rollback, receive or destroy shows up as bulk changes; run
   reconcile afterwards and expect consumers to rescan.
-- The collector holds the dataset mount open: an unmount or export
-  fails with EBUSY until the collector stops. If the mount goes away
-  otherwise, marks go stale and no events are delivered until the
-  collector is restarted.
+- The collector does not hold the mount open and does not pin it: an
+  unmount succeeds while it runs. During the millisecond a fanotify
+  event is being resolved, a racing unmount can still report EBUSY,
+  so retry once if a scripted failover hits it. After a remount the
+  marks are refreshed automatically, within refresh_interval_ms
+  (default 5s), with no restart and no lost state; the events that
+  happened while the dataset was unmounted do not exist for the
+  collector, run reconcile after mount if that window matters.
 
 ## Journal maintenance
 
@@ -170,7 +177,30 @@ drives automatic migrations on open.
 | busy_timeout_ms | 5000 | sqlite lock wait |
 | read_batch | 1024 | records fetched per read |
 | follow_interval_ms | 500 | follow mode poll interval |
+| refresh_interval_ms | 5000 | how often an idle collector re-arms the fanotify mark after a remount |
 | retention_records | 0 | force-drop oldest records beyond this; 0 keeps everything until acknowledged |
+
+## Performance
+
+Measured on a tmpfs workload, one collector, default config:
+
+- Sustained rate: about 5,500 events per second (one event per
+  namespace operation; a single touch of a fresh file produces one
+  create plus one attrib, so user visible operations count double).
+- Burst absorption: the kernel fanotify queue holds 16,384 events.
+  A 150,000 operation burst arriving in 0.7s fills it, the collector
+  logs "queue overflow, run reconcile" once, and the queue keeps
+  accepting events as the collector drains it.
+- Overflow recovery: files that still exist get their create or
+  modify corrected by reconcile. A file that was both created and
+  deleted inside the overflow window leaves no trace anywhere, so no
+  changelog can recover it; it is gone from the journal too. If that
+  window matters, slow the writer down, or run the consumers from a
+  full scan baseline.
+
+Reconcile is the intended safety net: it compares the tree against
+the inventory and appends corrective create, modify and remove
+records. Run it after every overflow warning.
 
 ## Tests
 
