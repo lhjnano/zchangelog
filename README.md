@@ -30,16 +30,48 @@ every consumer passed them.
 - fanotify is Linux only; a FreeBSD port would need a kqueue based
   collector
 
-## Build
+## Install
+
+### From packages
+
+Grab a deb or rpm from the
+[releases page](https://github.com/lhjnano/zchangelog/releases) and
+install it with the system package manager:
+
+    apt install ./zchangelog_0.1.0-1_amd64.deb      # Debian, Ubuntu
+    dnf install zchangelog-0.1.0-1.fc44.x86_64.rpm  # Fedora, RHEL family
+
+### From source
+
+Build dependencies differ per distribution:
+
+Ubuntu, Debian:
+
+    apt install build-essential autoconf automake pkg-config libsqlite3-dev
+
+Fedora:
+
+    dnf install gcc make autoconf automake pkgconf-pkg-config sqlite-devel
+
+RHEL, AlmaLinux, Rocky (9 or newer):
+
+    dnf install gcc make autoconf automake pkgconfig sqlite-devel
+
+Alpine, other musl based distributions: the same autotools build
+should work with `build-base sqlite-dev`; it is not covered by CI
+yet.
+
+Then:
 
     ./autogen.sh
     ./configure
     make
-    make checkstyle
+    sudo make install
 
-Requires a C compiler, libsqlite3 and pkg-config. The functional
-tests additionally need ksh, root, and loop mounts (they create
-their own filesystems).
+For the test suite add ksh, e2fsprogs, xfsprogs (Debian, Ubuntu:
+`apt install ksh e2fsprogs xfsprogs`; Fedora, RHEL family:
+`dnf install ksh e2fsprogs xfsprogs`). The tests create their own
+filesystems and need root.
 
 ## Usage
 
