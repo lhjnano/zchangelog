@@ -29,6 +29,8 @@ checkstyle: $(CHECKS)
 TESTS = \
 	tests/functional/changelog/basic.ksh \
 	tests/functional/changelog/consumers.ksh \
+	tests/functional/changelog/filters.ksh \
+	tests/functional/changelog/owner.ksh \
 	tests/functional/changelog/reconcile.ksh \
 	tests/functional/changelog/stress.ksh
 EXTRA_DIST = tests scripts

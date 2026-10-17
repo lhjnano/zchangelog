@@ -68,6 +68,15 @@ acknowledges. After a crash it resumes from its cursor, and if the
 journal declares a gap it resyncs, so the index never silently
 diverges.
 
+Worker policy for hot files: a file edited repeatedly produces a
+modify event per write, and a write can still be in progress when
+the event arrives. Read with `-C` to coalesce the batch to the last
+state per path, apply a debounce window in the worker (embed a path
+only after it stops producing events, and verify size and mtime are
+stable before reading), and make the embedding an idempotent
+upsert, since a crash between apply and acknowledge redelivers the
+last records.
+
 Feature interactions that matter for this use:
 
 - Encrypted datasets: indexing works while the key is loaded (names

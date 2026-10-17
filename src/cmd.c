@@ -194,9 +194,9 @@ cmd_read(int argc, char **argv)
 {
 	zcl_record_t *recs;
 	long long cursor = 0, ms = 0;
-	const char *consumer = NULL;
+	const char *consumer = NULL, *prefix = NULL;
 	int nrecs, ncount, use_cursor = 0, ack = 0, follow = 0,
-	    json = 0, err, ch;
+	    json = 0, coalesce = 0, err, ch;
 
 	ncount = (int)zcl_tunable("read_batch");
 	recs = malloc((size_t)ncount * sizeof (*recs));
@@ -204,8 +204,11 @@ cmd_read(int argc, char **argv)
 		return (1);
 
 	optind = 1;
-	while ((ch = getopt(argc, argv, "c:s:n:w:afj")) != -1) {
+	while ((ch = getopt(argc, argv, "c:s:n:w:afjCp:")) != -1) {
 		switch (ch) {
+		case 'C':
+			coalesce = 1;
+			break;
 		case 'c':
 			consumer = optarg;
 			break;
@@ -227,6 +230,9 @@ cmd_read(int argc, char **argv)
 			break;
 		case 'j':
 			json = 1;
+			break;
+		case 'p':
+			prefix = optarg;
 			break;
 		default:
 			(void) fprintf(stderr, "usage: zchangelog read "
@@ -256,18 +262,61 @@ read_loop:
 		store_close();
 		return (1);
 	}
+	/*
+	 * Coalesce: keep only the last record per path, so a consumer
+	 * applying the result sees the final state of each entry.  The
+	 * cursor still advances past everything that was read.
+	 */
+	if (coalesce && nrecs > 1) {
+		zcl_record_t *kept = malloc((size_t)nrecs * sizeof (*kept));
+		int nk = 0;
+
+		if (kept == NULL) {
+			free(recs);
+			store_close();
+			return (1);
+		}
+		for (int i = nrecs - 1; i >= 0; i--) {
+			int dup = 0;
+
+			for (int j = i + 1; j < nrecs; j++) {
+				if (strcmp(recs[j].path, recs[i].path) == 0) {
+					dup = 1;
+					break;
+				}
+			}
+			if (!dup)
+				kept[nk++] = recs[i];
+		}
+		for (int i = nk - 1; i >= 0; i--)
+			recs[nk - 1 - i] = kept[i];
+		nrecs = nk;
+		free(kept);
+	}
+
+	cursor = (nrecs > 0) ? recs[nrecs - 1].seq : cursor;
+
+	if (prefix != NULL) {
+		int n = 0;
+
+		for (int i = 0; i < nrecs; i++)
+			if (zcl_prefix_match(prefix, recs[i].path))
+				recs[n++] = recs[i];
+		nrecs = n;
+	}
+
 	for (int i = 0; i < nrecs; i++) {
 		if (json)
 			print_rec_json(&recs[i]);
 		else
 			print_rec(&recs[i]);
 	}
-	cursor = (nrecs > 0) ? recs[nrecs - 1].seq : cursor;
 
 	if (getenv("ZCL_DEBUG") != NULL)
 		(void) fprintf(stderr, "DBG read nrecs=%d cursor=%lld ack=%d "
-		    "consumer=%s\n", nrecs, cursor, ack,
-		    consumer ? consumer : "(none)");
+		    "consumer=%s coalesce=%d\n", nrecs, cursor, ack,
+		    consumer ? consumer : "(none)", coalesce);
+
 	if (ack && consumer != NULL)
 		(void) store_consumer_set(consumer, cursor);
 
@@ -289,13 +338,39 @@ read_loop:
 int
 cmd_watch(int argc, char **argv)
 {
-	if (argc != 1) {
-		(void) fprintf(stderr, "usage: zchangelog watch <mount>\n");
+	const char *mount = NULL;
+	int i;
+
+	/*
+	 * Parsed by hand: getopt permutes non-options, which loses
+	 * track of the mount when flags follow it.
+	 */
+	for (i = 0; i < argc; i++) {
+		if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
+			zcl_filter_add(0, argv[++i]);
+		} else if (strcmp(argv[i], "-e") == 0 && i + 1 < argc) {
+			zcl_filter_add(1, argv[++i]);
+		} else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
+			zcl_filter_owner((long long)atoll(argv[++i]), -1);
+		} else if (strcmp(argv[i], "-g") == 0 && i + 1 < argc) {
+			zcl_filter_owner(-1, (long long)atoll(argv[++i]));
+		} else if (mount == NULL) {
+			mount = argv[i];
+		} else {
+			mount = NULL;
+			break;
+		}
+	}
+
+	if (mount == NULL) {
+		(void) fprintf(stderr, "usage: zchangelog watch "
+		    "[-i include-prefix] [-e exclude-prefix] "
+		    "[-u owner-uid] [-g owner-gid] <mount>\n");
 		return (2);
 	}
 	if (store_open(zcl_dbfile) != 0)
 		return (1);
-	return (watch_run(argv[0]));
+	return (watch_run(mount));
 }
 
 static void

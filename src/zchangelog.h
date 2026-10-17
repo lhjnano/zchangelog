@@ -63,6 +63,16 @@ extern const char	*zcl_dbfile;
 /* conf.c */
 long long	zcl_tunable(const char *key);
 void	zcl_conf_load(void);
+int	zcl_include_count(void);
+const char	*zcl_include(int i);
+int	zcl_exclude_count(void);
+const char	*zcl_exclude(int i);
+void	zcl_filter_add(int is_exclude, const char *prefix);
+void	zcl_filter_owner(long long uid, long long gid);
+long long	zcl_filter_owner_uid(void);
+long long	zcl_filter_owner_gid(void);
+int	zcl_prefix_match(const char *prefix, const char *path);
+int	zcl_path_allowed(const char *path);
 
 /* store.c */
 int	store_open(const char *dbfile);

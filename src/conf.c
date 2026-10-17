@@ -98,3 +98,108 @@ zcl_conf_load(void)
 	}
 	(void) fclose(fp);
 }
+
+/*
+ * Watch filters.  Empty lists mean everything is collected.  Prefix
+ * matching requires a path or directory boundary, so /pool/data does
+ * not match /pool/database.
+ */
+#define	ZCL_MAX_FILTERS	64
+
+static char	*zcl_includes[ZCL_MAX_FILTERS];
+static int	zcl_ninc;
+static char	*zcl_excludes[ZCL_MAX_FILTERS];
+static int	zcl_nexc;
+static long long	zcl_owner_uid = -1;
+static long long	zcl_owner_gid = -1;
+
+int
+zcl_include_count(void)
+{
+	return (zcl_ninc);
+}
+
+const char *
+zcl_include(int i)
+{
+	return (zcl_includes[i]);
+}
+
+int
+zcl_exclude_count(void)
+{
+	return (zcl_nexc);
+}
+
+const char *
+zcl_exclude(int i)
+{
+	return (zcl_excludes[i]);
+}
+
+void
+zcl_filter_add(int is_exclude, const char *prefix)
+{
+	char **list = is_exclude ? zcl_excludes : zcl_includes;
+	int *n = is_exclude ? &zcl_nexc : &zcl_ninc;
+
+	if (*n >= ZCL_MAX_FILTERS || prefix == NULL || prefix[0] == '\0')
+		return;
+	list[*n] = strdup(prefix);
+	if (list[*n] != NULL)
+		(*n)++;
+}
+
+void
+zcl_filter_owner(long long uid, long long gid)
+{
+	if (uid >= 0)
+		zcl_owner_uid = uid;
+	if (gid >= 0)
+		zcl_owner_gid = gid;
+}
+
+long long
+zcl_filter_owner_uid(void)
+{
+	return (zcl_owner_uid);
+}
+
+long long
+zcl_filter_owner_gid(void)
+{
+	return (zcl_owner_gid);
+}
+
+/*
+ * True when path is prefix itself or lives below it.
+ */
+int
+zcl_prefix_match(const char *prefix, const char *path)
+{
+	size_t n = strlen(prefix);
+
+	if (n == 0)
+		return (1);
+	return (strncmp(path, prefix, n) == 0 &&
+	    (path[n] == '\0' || path[n] == '/'));
+}
+
+/*
+ * Apply the configured filters to a path.
+ */
+int
+zcl_path_allowed(const char *path)
+{
+	int i;
+
+	for (i = 0; i < zcl_nexc; i++)
+		if (zcl_prefix_match(zcl_excludes[i], path))
+			return (0);
+	if (zcl_ninc == 0)
+		return (1);
+	for (i = 0; i < zcl_ninc; i++)
+		if (zcl_prefix_match(zcl_includes[i], path))
+			return (1);
+	return (0);
+}

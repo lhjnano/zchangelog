@@ -305,6 +305,37 @@ watch_run(const char *mountpath)
 			if (full[0] != '\0' && strncmp(full, zcl_mountpath,
 			    strlen(zcl_mountpath)) != 0)
 				goto next;
+			if (getenv("ZCL_DEBUG") != NULL)
+				(void) fprintf(stderr, "DBG owner filter "
+				    "uid=%lld gid=%lld\n",
+				    zcl_filter_owner_uid(),
+				    zcl_filter_owner_gid());
+
+			if (zcl_filter_owner_uid() >= 0 ||
+			    zcl_filter_owner_gid() >= 0) {
+				const char *p = oldfull[0] ? oldfull : full;
+				struct stat st;
+
+				/*
+				 * Cannot attribute a vanished object;
+				 * drop the event rather than misfile
+				 * it under the wrong owner.
+				 */
+				if (p[0] == '\0' || stat(p, &st) != 0 ||
+				    (zcl_filter_owner_uid() >= 0 &&
+				    st.st_uid != (uid_t)
+				    zcl_filter_owner_uid()) ||
+				    (zcl_filter_owner_gid() >= 0 &&
+				    st.st_gid != (gid_t)
+				    zcl_filter_owner_gid()))
+					goto next;
+			}
+
+			if (!zcl_path_allowed(full) ||
+			    (oldfull[0] != '\0' &&
+			    !zcl_path_allowed(oldfull)))
+				goto next;
+
 			if (skip_path(full) || skip_path(oldfull)) {
 				meta = FAN_EVENT_NEXT(meta, len);
 				continue;

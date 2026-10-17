@@ -93,8 +93,26 @@ stream:
     zchangelog -d /var/lib/zchangelog/pool.db read -c indexer -j
 
 Read with `-a` to acknowledge what was processed, `-f` to follow, or
-`-s` to read from an explicit position. Records are trimmed once
-every consumer acknowledged them.
+`-s` to read from an explicit position. `-p` restricts the output to
+a path prefix, and `-C` coalesces records so each path appears once
+with its final state, which suits debounce style workers. Records
+are trimmed once every consumer acknowledged them.
+
+### Filter
+
+The collector can constrain what it records. The default is
+everything; include prefixes, exclude prefixes and owner or group
+ids are all optional and combine:
+
+    sudo zchangelog -d pool.db watch /pool/data \
+        -i /pool/data/keep -e /pool/data/keep/tmp -u 0
+
+Filters are evaluated at collection time (before the journal
+write), so filtered out events cost no journal space. Owner and
+group are attributed when the event arrives: a record keeps the
+owner the file had at creation, and a later chown arrives as its
+own attrib event. When a pool hosts many datasets, prefer include
+prefixes over running one collector per dataset.
 
 ### Reconcile
 
