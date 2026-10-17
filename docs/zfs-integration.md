@@ -46,6 +46,7 @@ The collector only needs the mountpoint path.
 | Snapshots | Snapshot creation and access to .zfs/snapshot are not namespace operations on the live tree. Snapshots do not interfere with the stream. |
 | Rollback, receive | These rewrite large parts of the tree. Events may be coalesced or missed; run reconcile afterwards. Consumers should treat it as a bulk change. |
 | Clones | Each clone has its own mount; point a collector at each mount you care about. |
+| Unmount, remount (cluster failover) | The collector does not pin the mount: unmounting succeeds while it runs, and after a remount the mark is re-armed automatically within refresh_interval_ms. Events during the unmounted window do not exist for the stream; reconcile after mount closes the gap. |
 | NFS, SMB exports | Client-side writes reach the server kernel as ordinary syscalls and are collected. The collector must run on the server; fanotify cannot watch an NFS client mount. |
 
 ## Using it from AI pipelines
