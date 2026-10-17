@@ -1,0 +1,15 @@
+Source: zchangelog
+Section: utils
+Priority: optional
+Maintainer: HeonJe Lee <lhjnano@gmail.com>
+Build-Depends: debhelper-compat (= 13), libsqlite3-dev, pkg-config
+Standards-Version: 4.6.1
+Homepage: https://github.com/lhjnano/zchangelog
+
+Package: zchangelog
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: change stream for ZFS datasets
+ Watches a dataset mount with fanotify, appends change records to a
+ SQLite journal with sequence-number cursors, and serves multiple
+ named consumers with register/read/clear semantics.

@@ -1,0 +1,101 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  checkstyle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./autogen.sh && ./configure
+      - run: make checkstyle
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: 'ubuntu:22.04', pm: 'apt' }
+          - { distro: 'ubuntu:24.04', pm: 'apt' }
+          - { distro: 'debian:12', pm: 'apt' }
+          - { distro: 'fedora:41', pm: 'dnf' }
+          - { distro: 'fedora:latest', pm: 'dnf' }
+          - { distro: 'almalinux:9', pm: 'dnf' }
+    runs-on: ubuntu-latest
+    container: ${{ matrix.distro }}
+    steps:
+      - run: |
+          if [ "$PM" = apt ]; then
+            apt-get update
+            apt-get install -y git gcc make autoconf automake pkg-config libsqlite3-dev
+          else
+            dnf install -y git gcc make autoconf automake pkgconf-pkg-config sqlite-devel
+          fi
+      - uses: actions/checkout@v4
+      - run: ./autogen.sh && ./configure && make
+    env:
+      PM: ${{ matrix.pm }}
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        fs: [tmpfs, ext4, xfs]
+    runs-on: ubuntu-latest
+    env:
+      FS: ${{ matrix.fs }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev ksh e2fsprogs xfsprogs
+      - run: ./autogen.sh && ./configure && make
+      - run: make check
+
+  zfs:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { variant: plain }
+          - { variant: dedup, create: '-o dedup=on' }
+          - { variant: encrypt, create: '-o encryption=aes-256-gcm' }
+          - { variant: quota, create: '-o quota=1g' }
+          - { variant: raidz, layout: 'raidz' }
+          - { variant: slog, slog: '1' }
+    runs-on: ubuntu-latest
+    env:
+      FS: zfs
+      ZFS_CREATE_OPTS: ${{ matrix.create }}
+      ZFS_POOL_LAYOUT: ${{ matrix.layout }}
+      ZFS_SLOG: ${{ matrix.slog }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev ksh zfsutils-linux
+      - run: sudo modprobe zfs
+      - run: ./autogen.sh && ./configure && make
+      - run: make check
+
+  deb:
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    steps:
+      - run: apt-get update && apt-get install -y git build-essential debhelper libsqlite3-dev pkg-config
+      - uses: actions/checkout@v4
+      - run: dpkg-buildpackage -us -uc -b && cp ../*.deb .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: '*.deb'
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - run: dnf install -y git rpm-build gcc make autoconf automake pkgconf-pkg-config sqlite-devel
+      - uses: actions/checkout@v4
+      - run: ./autogen.sh && ./configure && make dist-gzip &&
+            mkdir -p rpmbuild/SOURCES && cp zchangelog-*.tar.gz rpmbuild/SOURCES/
+      - run: echo "%_topdir $PWD/rpmbuild" > $HOME/.rpmmacros &&
+            rpmbuild -bb packaging/rpm/zchangelog.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: rpmbuild/RPMS/**/*.rpm

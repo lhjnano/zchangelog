@@ -1,0 +1,27 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Verify tag matches configure.ac version
+        run: |
+          V=$(autoconf -t 'AC_INIT' -t 'AC_INIT:[$1]' configure.ac | tail -1)
+          [ "v$V" = "$GITHUB_REF_NAME" ] ||
+            { echo "tag $GITHUB_REF_NAME does not match version $V"; exit 1; }
+      - run: ./autogen.sh && ./configure && make dist-gzip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: '*.tar.gz'
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.tar.gz'
+          generate_release_notes: true

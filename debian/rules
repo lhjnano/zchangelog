@@ -1,0 +1,8 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+# The functional tests need root, loop mounts and a sudo-capable
+# environment; run them from the source tree with make check instead
+# of during package builds.
+override_dh_auto_test:

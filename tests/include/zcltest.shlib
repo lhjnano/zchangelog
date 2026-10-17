@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: CDDL-1.0
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# https://opensource.org/license/CDDL-1.0.
+#
+# Copyright (c) 2026 by HeonJe Lee
+#
+
+#
+# Minimal ZTS-style helpers for the zchangelog test suite.  Each test
+# selects the filesystem under test through $FS (tmpfs, ext4, xfs or
+# zfs) and calls mount_test_fs / unmount_test_fs.
+#
+
+export FS=${FS:-tmpfs}
+export ZCL=${ZCL:-./zchangelog}
+export CLDIR=$PWD/zcl-test.$$
+export CLMNT=$CLDIR/mnt
+export CLDB=$CLDIR/journal.db
+
+log_note() { echo "NOTE: $*"; }
+log_assert() { echo "ASSERT: $*"; }
+log_must() { "$@" > /dev/null 2>&1 || log_fail "command failed: $*"; }
+log_fail() { echo "FAIL: $*"; cleanup_test_fs; exit 1; }
+log_pass() { echo "PASS"; cleanup_test_fs; exit 0; }
+
+mount_test_fs() {
+	mkdir -p $CLMNT || return 1
+	case $FS in
+	tmpfs)
+		sudo -n mount -t tmpfs tmpfs $CLMNT
+		;;
+	ext4)
+		truncate -s 256m $CLDIR/ext4.img || return 1
+		sudo -n mkfs.ext4 -qF $CLDIR/ext4.img || return 1
+		sudo -n mount -o loop $CLDIR/ext4.img $CLMNT &&
+		    sudo -n chmod 777 $CLMNT
+		;;
+	xfs)
+		truncate -s 512m $CLDIR/xfs.img || return 1
+		sudo -n mkfs.xfs -qf $CLDIR/xfs.img || return 1
+		sudo -n mount -o loop $CLDIR/xfs.img $CLMNT &&
+		    sudo -n chmod 777 $CLMNT
+		;;
+	zfs)
+		truncate -s 512m $CLDIR/zfs.img || return 1
+		case ${ZFS_POOL_LAYOUT:-plain} in
+		raidz)
+			truncate -s 256m $CLDIR/zfs2.img || return 1
+			truncate -s 256m $CLDIR/zfs3.img || return 1
+			sudo -n zpool create -f zcltest raidz1 \
+			    $CLDIR/zfs.img $CLDIR/zfs2.img $CLDIR/zfs3.img ||
+			    return 1
+			;;
+		*)
+			sudo -n zpool create -f zcltest $CLDIR/zfs.img ||
+			    return 1
+			;;
+		esac
+		if [ -n "${ZFS_SLOG:-}" ]; then
+			truncate -s 128m $CLDIR/slog.img || return 1
+			sudo -n zpool add -f zcltest log $CLDIR/slog.img ||
+			    return 1
+		fi
+		if [[ $ZFS_CREATE_OPTS == *encryption* ]]; then
+			head -c 32 /dev/urandom > $CLDIR/key.raw
+			ZFS_CREATE_OPTS="$ZFS_CREATE_OPTS -o keyformat=raw"
+			ZFS_CREATE_OPTS="$ZFS_CREATE_OPTS -o keylocation=file://$CLDIR/key.raw"
+			export ZFS_CREATE_OPTS
+			log_note "encryption variant, key at $CLDIR/key.raw"
+		fi
+		sudo -n zfs create $ZFS_CREATE_OPTS \
+		    -o mountpoint=$CLMNT zcltest/data &&
+		    sudo -n chmod 777 $CLMNT
+		;;
+	*)
+		echo "SKIP: unknown FS '$FS'"
+		return 2
+		;;
+	esac
+}
+
+unmount_test_fs() {
+	case $FS in
+	tmpfs)
+		sudo -n umount $CLMNT 2>/dev/null
+		;;
+	ext4|xfs)
+		sudo -n umount $CLMNT 2>/dev/null
+		sudo -n losetup -D 2>/dev/null
+		;;
+	zfs)
+		sudo -n zpool destroy -f zcltest 2>/dev/null
+		;;
+	esac
+	rm -rf $CLDIR
+}
+
+cleanup_test_fs() {
+	sudo -n pkill -x zchangelog 2>/dev/null
+	unmount_test_fs
+}
