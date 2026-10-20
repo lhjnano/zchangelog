@@ -292,6 +292,24 @@ watch_inotify_run(const char *mountpath)
 				skip = 1;
 			if (zcl_skip_path(full))
 				skip = 1;
+			if (zcl_filter_owner_uid() >= 0 ||
+			    zcl_filter_owner_gid() >= 0) {
+				struct stat st;
+
+				/*
+				 * Cannot attribute a vanished object;
+				 * drop the event rather than misfile
+				 * it under the wrong owner.
+				 */
+				if (stat(full, &st) != 0 ||
+				    (zcl_filter_owner_uid() >= 0 &&
+				    st.st_uid != (uid_t)
+				    zcl_filter_owner_uid()) ||
+				    (zcl_filter_owner_gid() >= 0 &&
+				    st.st_gid != (gid_t)
+				    zcl_filter_owner_gid()))
+					skip = 1;
+			}
 			if (skip) {
 				ofs += sizeof (*iev) + iev->len;
 				continue;

@@ -20,20 +20,38 @@ jobs:
           - { distro: 'fedora:41', pm: 'dnf' }
           - { distro: 'fedora:latest', pm: 'dnf' }
           - { distro: 'almalinux:9', pm: 'dnf' }
+          - { distro: 'almalinux:8', pm: 'dnf' }
+          - { distro: 'debian:10', pm: 'apt', legacy: 'buster' }
     runs-on: ubuntu-latest
     container: ${{ matrix.distro }}
+    env:
+      PM: ${{ matrix.pm }}
+      LEGACY: ${{ matrix.legacy }}
+      DISTRO: ${{ matrix.distro }}
     steps:
+      - name: Fix apt sources (legacy distros)
+        if: matrix.legacy
+        run: |
+          if [ "$LEGACY" = buster ]; then
+            echo "deb [trusted=yes] http://archive.debian.org/debian buster main" > /etc/apt/sources.list
+            echo "deb [trusted=yes] http://archive.debian.org/debian-security buster/updates main" >> /etc/apt/sources.list
+          fi
       - run: |
           if [ "$PM" = apt ]; then
-            apt-get update
-            apt-get install -y git gcc make autoconf automake pkg-config libsqlite3-dev
+            apt-get -o Acquire::Check-Valid-Until=false update || apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y git gcc make autoconf automake pkg-config libsqlite3-dev
           else
             dnf install -y git gcc make autoconf automake pkgconf-pkg-config sqlite-devel
           fi
+      - name: Clone (legacy containers cannot run checkout actions)
+        if: matrix.legacy
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout "$GITHUB_SHA"
       - uses: actions/checkout@v4
+        if: '!matrix.legacy'
       - run: ./autogen.sh && ./configure && make
-    env:
-      PM: ${{ matrix.pm }}
 
   kernel-4-19:
     runs-on: ubuntu-latest

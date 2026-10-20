@@ -84,5 +84,14 @@ echo "$out"
 echo "$out" | grep -q CREATE || { echo "FAIL: no CREATE"; exit 1; }
 echo "$out" | grep -q RENAME || { echo "FAIL: no RENAME"; exit 1; }
 echo "$out" | grep -q REMOVE || { echo "FAIL: no REMOVE"; exit 1; }
-echo "=== 4.19 inotify backend: PASS ==="'
+echo "=== 4.19 inotify backend smoke: PASS ==="
+echo "=== in-VM: full test suite (inotify backend) ==="
+ZCL_TEST_BACKEND=inotify make check > check-inotify.log 2>&1 || \
+  { echo "MAKE CHECK FAIL (inotify)"; tail -30 check-inotify.log; exit 1; }
+grep -E "^(PASS|FAIL)" check-inotify.log | tail -10
+echo "=== in-VM: full test suite (fid fallback path) ==="
+make check > check-fallback.log 2>&1 || \
+  { echo "MAKE CHECK FAIL (fallback)"; tail -30 check-fallback.log; exit 1; }
+grep -E "^(PASS|FAIL)" check-fallback.log | tail -10
+echo "=== 4.19 full suite: PASS ==="'
 echo "=== done ==="
