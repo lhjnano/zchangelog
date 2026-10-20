@@ -11,13 +11,20 @@ to see dataset changes efficiently.
 zchangelog is a userland program. It depends on two kernel
 mechanisms, not on ZFS internals:
 
-1. fanotify FID reporting (Linux 5.1+): the collector marks the
-   dataset mount and receives one event per namespace operation
-   (create, delete, rename, attribute change, content modify), with
-   the parent directory file handle and entry name attached.
-2. open_by_handle_at: file handles are resolved back to paths. ZFS
-   supports file handles through its NFS export operations, so this
-   works on ZFS datasets without any configuration.
+1. fanotify FID reporting (Linux 5.13+): the default backend. The
+   collector marks the dataset mount and receives one event per
+   namespace operation (create, delete, rename, attribute change,
+   content modify), with the parent directory file handle and entry
+   name attached.
+2. inotify (any kernel with inotify, Linux 4.x included): the
+   fallback backend, selected with `watch -b inotify` and chosen
+   automatically when FID reporting is unavailable. Entry names
+   arrive in the event itself; watches are maintained recursively
+   over the dataset tree.
+3. open_by_handle_at (FID backend only): file handles are resolved
+   back to paths. ZFS supports file handles through its NFS export
+   operations, so this works on ZFS datasets without any
+   configuration.
 
 Everything else is self contained: a SQLite journal with
 sequence-number cursors, named consumers with acknowledge and trim,

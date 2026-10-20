@@ -20,6 +20,15 @@
 
 export FS=${FS:-tmpfs}
 export ZCL=${ZCL:-./zchangelog}
+
+# Collection backend under test: fid (default) or inotify, selected
+# through ZCL_TEST_BACKEND by the CI matrix.
+ZCL_BACKEND=${ZCL_TEST_BACKEND:-fid}
+case $ZCL_BACKEND in
+inotify) ZCL_WATCHFLAGS="-b inotify" ;;
+*) ZCL_WATCHFLAGS="" ;;
+esac
+export ZCL_WATCHFLAGS
 export CLDIR=$PWD/zcl-test.$$
 export CLMNT=$CLDIR/mnt
 export CLDB=$CLDIR/journal.db

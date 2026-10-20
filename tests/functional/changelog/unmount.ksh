@@ -30,7 +30,7 @@ CONF=$CLDIR/zcl.conf
 
 mount_test_fs || log_fail "cannot mount $FS"
 
-sudo -n env ZCHANGELOG_CONF=$CONF $ZCL -d $CLDB watch $CLMNT \
+sudo -n env ZCHANGELOG_CONF=$CONF $ZCL -d $CLDB watch $ZCL_WATCHFLAGS $CLMNT \
     >$CLDIR/watch.log 2>&1 &
 sleep 1
 

@@ -14,8 +14,10 @@ every consumer passed them.
 
 ## Features
 
-- fanotify collection in FID reporting mode; works on ZFS 2.2+ and
-  any filesystem fanotify supports
+- Two collection backends sharing one journal and cursor model:
+  fanotify FID reporting (the default; Linux 5.13+) and an inotify
+  backend covering Linux 4.x and newer kernels that restrict
+  fanotify namespace events
 - SQLite journal with per-consumer cursors, acknowledge and trim
 - Collector survives unmounts: it does not pin the dataset, and
   refreshes its mark automatically after a remount, which is what
@@ -27,7 +29,9 @@ every consumer passed them.
 
 ## Requirements
 
-- Linux 5.1 or newer: collection uses fanotify FID reporting
+- Linux 4.x or newer: collection runs on fanotify FID reporting
+  (Linux 5.13+, the default backend) or on the inotify backend
+  (any kernel with inotify, selected with watch -b inotify)
   (FAN_REPORT_DFID_NAME, FAN_CREATE/DELETE/MOVE/ATTRIB) and
   open_by_handle_at, none of which exist in older kernels
 - fanotify is Linux only; a FreeBSD port would need a kqueue based
@@ -85,7 +89,9 @@ Run the collector on the storage node (fanotify needs root):
     sudo zchangelog -d /var/lib/zchangelog/pool.db watch /pool/data
 
 Every namespace operation on the dataset now appends a record to the
-journal.
+journal. The collector selects fanotify FID reporting when the kernel
+offers it and falls back to the inotify backend otherwise; pass
+`-b inotify` to force it, which is what 4.x kernels take.
 
 ### Consume
 

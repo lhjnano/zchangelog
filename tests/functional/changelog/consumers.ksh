@@ -24,7 +24,7 @@ log_assert "consumer cursors are independent (FS=$FS)"
 
 mount_test_fs || log_fail "cannot mount $FS"
 
-sudo -n $ZCL -d $CLDB watch $CLMNT >$CLDIR/watch.log 2>&1 &
+sudo -n $ZCL -d $CLDB watch $ZCL_WATCHFLAGS $CLMNT >$CLDIR/watch.log 2>&1 &
 sleep 1
 sudo -n $ZCL -d $CLDB register fast
 sudo -n $ZCL -d $CLDB register slow

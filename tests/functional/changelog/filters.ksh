@@ -25,7 +25,7 @@ log_assert "include and read path filters (FS=$FS)"
 
 mount_test_fs || log_fail "cannot mount $FS"
 
-sudo -n $ZCL -d $CLDB watch $CLMNT -i $CLMNT/keep >$CLDIR/watch.log 2>&1 &
+sudo -n $ZCL -d $CLDB watch $ZCL_WATCHFLAGS $CLMNT -i $CLMNT/keep >$CLDIR/watch.log 2>&1 &
 sleep 1
 
 mkdir $CLMNT/keep
@@ -44,7 +44,7 @@ echo "$out" | grep -q "drop/d1" && log_fail "d1 was not filtered"
 # The consumer side can constrain by path independently: a fresh
 # collector without include filters records both subtrees, and -p
 # narrows the read to one.
-sudo -n $ZCL -d $CLDB watch $CLMNT >$CLDIR/watch2.log 2>&1 &
+sudo -n $ZCL -d $CLDB watch $ZCL_WATCHFLAGS $CLMNT >$CLDIR/watch2.log 2>&1 &
 sleep 1
 touch $CLMNT/plain1
 touch $CLMNT/plain2

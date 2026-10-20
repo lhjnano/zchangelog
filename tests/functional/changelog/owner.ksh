@@ -26,7 +26,7 @@ log_assert "owner filter by uid (FS=$FS)"
 
 mount_test_fs || log_fail "cannot mount $FS"
 
-sudo -n $ZCL -d $CLDB watch $CLMNT -u 0 >$CLDIR/watch.log 2>&1 &
+sudo -n $ZCL -d $CLDB watch $ZCL_WATCHFLAGS $CLMNT -u 0 >$CLDIR/watch.log 2>&1 &
 sleep 1
 
 sudo -n touch $CLMNT/rootfile
