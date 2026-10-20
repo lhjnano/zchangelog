@@ -5,6 +5,7 @@ zchangelog_SOURCES = \
 	src/cmd.c \
 	src/store.c \
 	src/watch_fanotify.c \
+	src/watch_inotify.c \
 	src/reconcile.c \
 	src/conf.c \
 	src/zchangelog.h

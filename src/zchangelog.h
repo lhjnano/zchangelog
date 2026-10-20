@@ -99,6 +99,11 @@ void	store_trim(void);
 
 /* watch_fanotify.c */
 int	watch_run(const char *mountpath);
+int	watch_inotify_run(const char *mountpath);
+int	zcl_skip_path(const char *path);
+void	zcl_inv_stat(const char *path);
+int	zcl_join_path(const char *dir, const char *name, char *buf,
+    size_t buflen);
 
 /* cmd.c */
 int	cmd_register(int argc, char **argv);

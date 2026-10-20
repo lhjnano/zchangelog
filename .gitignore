@@ -17,3 +17,5 @@ configure~
 .omc/
 test-driver
 *.tar.gz
+*.trs
+*.log

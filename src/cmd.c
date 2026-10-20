@@ -339,6 +339,7 @@ int
 cmd_watch(int argc, char **argv)
 {
 	const char *mount = NULL;
+	const char *backend = NULL;
 	int i;
 
 	/*
@@ -354,6 +355,8 @@ cmd_watch(int argc, char **argv)
 			zcl_filter_owner((long long)atoll(argv[++i]), -1);
 		} else if (strcmp(argv[i], "-g") == 0 && i + 1 < argc) {
 			zcl_filter_owner(-1, (long long)atoll(argv[++i]));
+		} else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
+			backend = argv[++i];
 		} else if (mount == NULL) {
 			mount = argv[i];
 		} else {
@@ -365,12 +368,22 @@ cmd_watch(int argc, char **argv)
 	if (mount == NULL) {
 		(void) fprintf(stderr, "usage: zchangelog watch "
 		    "[-i include-prefix] [-e exclude-prefix] "
-		    "[-u owner-uid] [-g owner-gid] <mount>\n");
+		    "[-u owner-uid] [-g owner-gid] "
+		    "[-b fid|inotify] <mount>\n");
 		return (2);
 	}
 	if (store_open(zcl_dbfile) != 0)
 		return (1);
-	return (watch_run(mount));
+	if (backend != NULL && strcmp(backend, "inotify") == 0)
+		return (watch_inotify_run(mount));
+
+	int rc = watch_run(mount);
+	if (rc == 2) {
+		(void) fprintf(stderr, "zchangelog: fanotify FID reporting "
+		    "unavailable, falling back to the inotify backend\n");
+		rc = watch_inotify_run(mount);
+	}
+	return (rc);
 }
 
 static void

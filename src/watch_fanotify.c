@@ -128,8 +128,8 @@ path_from_handle(const struct zcl_fh *fh, char *buf, size_t buflen)
 }
 
 /* Join a resolved directory and an event name into a full path. */
-static int
-join_path(const char *dir, const char *name, char *buf, size_t buflen)
+int
+zcl_join_path(const char *dir, const char *name, char *buf, size_t buflen)
 {
 	size_t d = strlen(dir);
 
@@ -142,8 +142,8 @@ join_path(const char *dir, const char *name, char *buf, size_t buflen)
 }
 
 /* Skip the journal database itself and its WAL side files. */
-static int
-skip_path(const char *path)
+int
+zcl_skip_path(const char *path)
 {
 	size_t n = strlen(zcl_dbfile);
 
@@ -211,7 +211,7 @@ event_paths(struct fanotify_event_metadata *meta, char *full,
 			if (path_from_handle(fh, dirpath,
 			    sizeof (dirpath)) == 0 &&
 			    (name == NULL || name[0] == '\0' ||
-			    join_path(dirpath, name, full, fullen) == 0)) {
+			    zcl_join_path(dirpath, name, full, fullen) == 0)) {
 				if (info->info_type ==
 				    FAN_EVENT_INFO_TYPE_OLD_DFID_NAME) {
 					(void) zcl_strlcpy(oldfull, full,
@@ -229,8 +229,8 @@ event_paths(struct fanotify_event_metadata *meta, char *full,
 }
 
 /* stat() a recorded path into the inventory; drop it if unreachable. */
-static void
-inv_stat(const char *path)
+void
+zcl_inv_stat(const char *path)
 {
 	struct stat st;
 
@@ -256,7 +256,11 @@ watch_run(const char *mountpath)
 	if (zcl_fanfd < 0) {
 		(void) fprintf(stderr, "zchangelog: fanotify_init: %s\n",
 		    strerror(errno));
-		return (1);
+		/*
+		 * Tell cmd_watch() that FID reporting is unavailable so it
+		 * can fall back to the inotify source.
+		 */
+		return (2);
 	}
 	zcl_markmask = FAN_MODIFY | FAN_ATTRIB | FAN_CREATE | FAN_DELETE |
 	    FAN_MOVED_FROM | FAN_MOVED_TO;
@@ -373,7 +377,7 @@ watch_run(const char *mountpath)
 			    !zcl_path_allowed(oldfull)))
 				goto next;
 
-			if (skip_path(full) || skip_path(oldfull)) {
+			if (zcl_skip_path(full) || zcl_skip_path(oldfull)) {
 				meta = FAN_EVENT_NEXT(meta, len);
 				continue;
 			}
@@ -387,7 +391,7 @@ watch_run(const char *mountpath)
 				(void) store_inventory_del(
 				    oldfull[0] ? oldfull : full);
 				if (full[0] != '\0')
-					inv_stat(full);
+					zcl_inv_stat(full);
 			} else if (op == ZCL_DELETE) {
 				(void) store_add(ts, op,
 				    oldfull[0] ? oldfull : full, NULL);
@@ -397,7 +401,7 @@ watch_run(const char *mountpath)
 				(void) store_add(ts, op,
 				    oldfull[0] ? oldfull : full, NULL);
 				if (full[0] != '\0')
-					inv_stat(full);
+					zcl_inv_stat(full);
 			}
 
 next:
