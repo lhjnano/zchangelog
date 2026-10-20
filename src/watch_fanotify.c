@@ -33,6 +33,22 @@
 
 #include "zchangelog.h"
 
+/*
+ * The FID backend needs the FAN_REPORT_DFID_NAME constants and the
+ * fanotify_event_info_* structures, which system headers only carry
+ * since the Linux 5.13 era.  On older systems the inotify backend
+ * covers collection, and this file compiles to a stub that reports
+ * the absence so cmd_watch can fall back.
+ */
+#ifndef	FAN_REPORT_DFID_NAME
+int
+watch_run(const char *mountpath)
+{
+	(void) mountpath;
+	return (2);
+}
+#else
+
 #ifndef	O_LARGEFILE
 #define	O_LARGEFILE	0
 #endif
@@ -127,32 +143,6 @@ path_from_handle(const struct zcl_fh *fh, char *buf, size_t buflen)
 	return (0);
 }
 
-/* Join a resolved directory and an event name into a full path. */
-int
-zcl_join_path(const char *dir, const char *name, char *buf, size_t buflen)
-{
-	size_t d = strlen(dir);
-
-	if (d == 0 || name == NULL || d + strlen(name) + 2 > buflen)
-		return (-1);
-	memcpy(buf, dir, d);
-	buf[d] = '/';
-	(void) zcl_strlcpy(buf + d + 1, name, buflen - d - 1);
-	return (0);
-}
-
-/* Skip the journal database itself and its WAL side files. */
-int
-zcl_skip_path(const char *path)
-{
-	size_t n = strlen(zcl_dbfile);
-
-	if (strncmp(path, zcl_dbfile, n) != 0)
-		return (0);
-	return (path[n] == '\0' || strcmp(path + n, "-wal") == 0 ||
-	    strcmp(path + n, "-shm") == 0);
-}
-
 /* Map a fanotify mask to a changelog op. */
 static int
 event_op(unsigned long long mask)
@@ -226,19 +216,6 @@ event_paths(struct fanotify_event_metadata *meta, char *full,
 		off += info->len;
 	}
 	(void) got;
-}
-
-/* stat() a recorded path into the inventory; drop it if unreachable. */
-void
-zcl_inv_stat(const char *path)
-{
-	struct stat st;
-
-	if (stat(path, &st) == 0)
-		(void) store_inventory_put(path,
-		    (long long)st.st_mtim.tv_sec, (long long)st.st_size);
-	else
-		(void) store_inventory_del(path);
 }
 
 int
@@ -416,3 +393,4 @@ next:
 			(void) store_exec("ROLLBACK");
 	}
 }
+#endif
