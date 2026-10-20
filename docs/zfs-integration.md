@@ -8,7 +8,7 @@ to see dataset changes efficiently.
 
 ## What zchangelog uses
 
-zchangelog is a userland program. It depends on two kernel
+zchangelog is an ordinary program, not a kernel module. It depends on two kernel
 mechanisms, not on ZFS internals:
 
 1. fanotify FID reporting (Linux 5.13+): the default backend. The

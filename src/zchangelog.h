@@ -42,7 +42,7 @@ zcl_strlcpy(char *dst, const char *src, size_t dstsize)
 /*
  * Ops recorded by the fanotify source.  Values follow the kernel
  * changelog ops where a mapping exists; MODIFY and ATTRIB have no
- * kernel counterpart and are userland only.
+ * kernel counterpart and are collected by this collector only.
  */
 #define	ZCL_CREATE	1
 #define	ZCL_DELETE	2
