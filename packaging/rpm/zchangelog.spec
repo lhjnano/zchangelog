@@ -1,5 +1,5 @@
 Name:           zchangelog
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Change stream for ZFS datasets
 License:        CDDL-1.0
@@ -27,5 +27,10 @@ named consumers with register/read/clear semantics.
 %license COPYING
 
 %changelog
+* Wed Oct 21 2026 HeonJe Lee <lhjnano@gmail.com> - 0.2.0-1
+- Add the inotify collection backend (watch -b inotify) for kernels
+  without fanotify FID reporting.
+- Add the maint functional test.
+
 * Sat Oct 17 2026 HeonJe Lee <lhjnano@gmail.com> - 0.1.0-1
 - Initial package.

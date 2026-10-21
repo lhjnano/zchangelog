@@ -1,3 +1,13 @@
+zchangelog (0.2.0-1) unstable; urgency=medium
+
+  * Add an inotify collection backend for kernels without fanotify
+    FID reporting, selected with watch -b inotify and used as the
+    automatic fallback when FID reporting is unavailable.
+  * Add the maint functional test covering the integrity check and
+    the consumer listing.
+
+ -- HeonJe Lee <lhjnano@gmail.com>  Wed, 21 Oct 2026 10:00:00 +0900
+
 zchangelog (0.1.0-1) unstable; urgency=medium
 
   * Initial release.
